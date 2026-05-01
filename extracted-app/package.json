@@ -3,6 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "vite build"
+  },
   "dependencies": {
     "@fontsource/inter": "^5.2.5",
     "@hookform/resolvers": "^3.3.4",
