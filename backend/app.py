@@ -2,15 +2,19 @@ import os
 import random
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, UTC
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
 
 app = Flask(__name__)
 CORS(app)
 
+
 monitoring_active = False
 monitor_thread = None
+
 
 state = {
     "status": "stopped",
@@ -20,6 +24,16 @@ state = {
     "blocked_ips": [],
     "alerts": [],
     "events": [],
+    "connections": [],
+    "dns_logs": [],
+    "http_logs": [],
+    "incidents": [],
+    "next_event_id": 1,
+    "next_alert_id": 1,
+    "next_connection_id": 1,
+    "next_dns_id": 1,
+    "next_http_id": 1,
+    "next_incident_id": 1,
     "network": {
         "interface": "Wi-Fi",
         "mode": "demo",
@@ -29,7 +43,9 @@ state = {
     }
 }
 
+
 SEVERITIES = ["low", "medium", "high", "critical"]
+
 ATTACK_TYPES = {
     "port_scan": {
         "title": "Port Scan Detected",
@@ -63,12 +79,12 @@ ATTACK_TYPES = {
 
 
 def now_iso():
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def add_event(event_type, source_ip, destination_ip, protocol, severity, message, action="observed"):
     event = {
-        "id": len(state["events"]) + 1,
+        "id": state["next_event_id"],
         "timestamp": now_iso(),
         "type": event_type,
         "source_ip": source_ip,
@@ -78,6 +94,7 @@ def add_event(event_type, source_ip, destination_ip, protocol, severity, message
         "message": message,
         "action": action
     }
+    state["next_event_id"] += 1
     state["events"].insert(0, event)
     state["events"] = state["events"][:200]
     return event
@@ -85,7 +102,7 @@ def add_event(event_type, source_ip, destination_ip, protocol, severity, message
 
 def add_alert(title, description, severity, source_ip, destination_ip, recommendation, status="open"):
     alert = {
-        "id": len(state["alerts"]) + 1,
+        "id": state["next_alert_id"],
         "timestamp": now_iso(),
         "title": title,
         "description": description,
@@ -95,10 +112,77 @@ def add_alert(title, description, severity, source_ip, destination_ip, recommend
         "recommendation": recommendation,
         "status": status
     }
+    state["next_alert_id"] += 1
     state["alerts"].insert(0, alert)
     state["alerts"] = state["alerts"][:100]
     state["suspicious_events"] += 1
     return alert
+
+
+def add_connection(source_ip, destination_ip, protocol, port, bytes_sent, verdict="allowed"):
+    record = {
+        "id": state["next_connection_id"],
+        "timestamp": now_iso(),
+        "source_ip": source_ip,
+        "destination_ip": destination_ip,
+        "protocol": protocol,
+        "port": port,
+        "bytes_sent": bytes_sent,
+        "verdict": verdict
+    }
+    state["next_connection_id"] += 1
+    state["connections"].insert(0, record)
+    state["connections"] = state["connections"][:300]
+    return record
+
+
+def add_dns_log(source_ip, query, qtype="A", verdict="observed"):
+    record = {
+        "id": state["next_dns_id"],
+        "timestamp": now_iso(),
+        "source_ip": source_ip,
+        "query": query,
+        "qtype": qtype,
+        "verdict": verdict
+    }
+    state["next_dns_id"] += 1
+    state["dns_logs"].insert(0, record)
+    state["dns_logs"] = state["dns_logs"][:200]
+    return record
+
+
+def add_http_log(source_ip, host, uri="/", method="GET", status_code=200, verdict="observed"):
+    record = {
+        "id": state["next_http_id"],
+        "timestamp": now_iso(),
+        "source_ip": source_ip,
+        "host": host,
+        "uri": uri,
+        "method": method,
+        "status_code": status_code,
+        "verdict": verdict
+    }
+    state["next_http_id"] += 1
+    state["http_logs"].insert(0, record)
+    state["http_logs"] = state["http_logs"][:200]
+    return record
+
+
+def add_incident(title, severity, source_ip, artifact_type, artifact_value, action="investigate"):
+    record = {
+        "id": state["next_incident_id"],
+        "timestamp": now_iso(),
+        "title": title,
+        "severity": severity,
+        "source_ip": source_ip,
+        "artifact_type": artifact_type,
+        "artifact_value": artifact_value,
+        "action": action
+    }
+    state["next_incident_id"] += 1
+    state["incidents"].insert(0, record)
+    state["incidents"] = state["incidents"][:200]
+    return record
 
 
 def monitor_loop():
@@ -132,6 +216,41 @@ def monitor_loop():
                 source_ip=src,
                 destination_ip=dst,
                 recommendation="Inspect the source host and review recent sessions."
+            )
+
+        if random.random() < 0.60:
+            src = f"192.168.1.{random.randint(2, 254)}"
+            dst = random.choice(["142.250.183.14", "104.26.10.78", "151.101.1.69"])
+            proto = random.choice(["TCP", "UDP"])
+            port = random.choice([53, 80, 123, 443, 8080])
+            add_connection(src, dst, proto, port, random.randint(300, 15000))
+
+        if random.random() < 0.35:
+            src = f"192.168.1.{random.randint(2, 254)}"
+            query = random.choice([
+                "google.com",
+                "github.com",
+                "cdn.discordapp.com",
+                "pastebin.com",
+                "suspicious-update-check.net"
+            ])
+            verdict = "suspicious" if "suspicious" in query or "pastebin" in query else "observed"
+            add_dns_log(src, query, "A", verdict)
+
+        if random.random() < 0.30:
+            src = f"192.168.1.{random.randint(2, 254)}"
+            host = random.choice([
+                "api.github.com",
+                "youtube.com",
+                "cdn.cloudflare.com",
+                "unknown-host.local"
+            ])
+            add_http_log(
+                src,
+                host,
+                "/",
+                random.choice(["GET", "POST"]),
+                random.choice([200, 301, 403, 500])
             )
 
         time.sleep(2)
@@ -250,6 +369,38 @@ def events():
     })
 
 
+@app.get("/connections")
+def connections():
+    return jsonify({
+        "success": True,
+        "connections": state["connections"]
+    })
+
+
+@app.get("/dns")
+def dns_logs():
+    return jsonify({
+        "success": True,
+        "dns_logs": state["dns_logs"]
+    })
+
+
+@app.get("/http")
+def http_logs():
+    return jsonify({
+        "success": True,
+        "http_logs": state["http_logs"]
+    })
+
+
+@app.get("/incidents")
+def incidents():
+    return jsonify({
+        "success": True,
+        "incidents": state["incidents"]
+    })
+
+
 @app.post("/simulate")
 def simulate():
     payload = request.get_json(silent=True) or {}
@@ -282,13 +433,23 @@ def simulate():
         recommendation="Review traffic, isolate host if needed, and block the offending IP."
     )
 
+    incident = add_incident(
+        title=attack["title"],
+        severity=attack["severity"],
+        source_ip=attack["source_ip"],
+        artifact_type="attack_type",
+        artifact_value=attack_type,
+        action="investigate"
+    )
+
     state["packets_analyzed"] += random.randint(150, 400)
 
     return jsonify({
         "success": True,
         "message": f"{attack_type} simulation generated",
         "event": event,
-        "alert": alert
+        "alert": alert,
+        "incident": incident
     })
 
 
@@ -313,6 +474,15 @@ def block_ip():
         protocol="LOCAL",
         severity="medium",
         message=f"IP {ip} added to block list",
+        action="blocked"
+    )
+
+    add_incident(
+        title="IP Blocked by Analyst Action",
+        severity="medium",
+        source_ip=ip,
+        artifact_type="ip",
+        artifact_value=ip,
         action="blocked"
     )
 
@@ -343,10 +513,14 @@ def report():
         "network": state["network"],
         "blocked_ips": state["blocked_ips"],
         "recent_alerts": state["alerts"][:10],
-        "recent_events": state["events"][:20]
+        "recent_events": state["events"][:20],
+        "recent_connections": state["connections"][:20],
+        "recent_dns_logs": state["dns_logs"][:20],
+        "recent_http_logs": state["http_logs"][:20],
+        "recent_incidents": state["incidents"][:20]
     })
 
-
+print("ROUTES:", sorted([str(rule) for rule in app.url_map.iter_rules()]))
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="127.0.0.1", port=port, debug=False)

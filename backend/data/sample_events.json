@@ -1,0 +1,12 @@
+[
+  {
+    "event_type": "flow",
+    "src_ip": "45.12.77.9",
+    "dest_ip": "192.168.1.10",
+    "proto": "TCP",
+    "dest_port": 443,
+    "severity": "low",
+    "signature": "Normal HTTPS Traffic",
+    "category": "Benign"
+  }
+]

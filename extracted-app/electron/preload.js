@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld('electron', {
   getLiveStats: () => ipcRenderer.invoke('get-live-stats'),
   getAlerts: () => ipcRenderer.invoke('get-alerts'),
   getEvents: () => ipcRenderer.invoke('get-events'),
+  getConnections: () => ipcRenderer.invoke('get-connections'),
+  getDnsLogs: () => ipcRenderer.invoke('get-dns-logs'),
+  getHttpLogs: () => ipcRenderer.invoke('get-http-logs'),
+  getIncidents: () => ipcRenderer.invoke('get-incidents'),
 
   simulateAttack: (attackType) => ipcRenderer.invoke('simulate-attack', attackType),
   blockIp: (ip) => ipcRenderer.invoke('block-ip', ip),

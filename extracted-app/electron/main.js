@@ -4,9 +4,6 @@ const fs = require('fs');
 const { spawn, exec } = require('child_process');
 const { promisify } = require('util');
 
-// Force production mode — load from dist/, not Vite dev server
-const isDev = false;
-
 const execAsync = promisify(exec);
 
 let mainWindow = null;
@@ -72,13 +69,11 @@ function getPythonCommand() {
 }
 
 function getBackendScriptPath() {
-  // __dirname = extracted-app/electron/
-  // backend/  = project root (two levels up from __dirname)
   const candidates = [
-    path.join(__dirname, '..', '..', 'backend', 'app.py'),   // IDPS-Jury-Demo/backend/app.py
-    path.join(__dirname, '..', 'backend', 'app.py'),          // extracted-app/backend/app.py
-    path.join(process.cwd(), '..', 'backend', 'app.py'),      // cwd/../backend/app.py
-    path.join(process.cwd(), 'backend', 'app.py'),             // cwd/backend/app.py
+    path.join(__dirname, '..', '..', 'backend', 'app.py'),
+    path.join(__dirname, '..', 'backend', 'app.py'),
+    path.join(process.cwd(), '..', 'backend', 'app.py'),
+    path.join(process.cwd(), 'backend', 'app.py'),
   ];
   log('Checking backend candidates:');
   candidates.forEach(p => log(' -', p, fs.existsSync(p) ? 'FOUND' : 'not found'));
@@ -121,7 +116,10 @@ async function startPythonBackend() {
       pythonProcess.on('error', err => log(`Python spawn error (${cmd}):`, err.message));
 
       const ready = await waitForBackend();
-      if (ready) { started = true; break; }
+      if (ready) {
+        started = true;
+        break;
+      }
 
       lastError = `Backend not ready using ${cmd}`;
       try { pythonProcess.kill(); } catch {}
@@ -132,7 +130,9 @@ async function startPythonBackend() {
     }
   }
 
-  return started ? { success: true } : { success: false, error: lastError || 'Could not start Python backend' };
+  return started
+    ? { success: true }
+    : { success: false, error: lastError || 'Could not start Python backend' };
 }
 
 function stopPythonBackend() {
@@ -145,16 +145,15 @@ function stopPythonBackend() {
 
 function configureSession() {
   const { session } = require('electron');
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(true);
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const allowedPermissions = new Set([]);
+    callback(allowedPermissions.has(permission));
   });
 }
 
 function getIndexPath() {
-  // __dirname = extracted-app/electron/
-  // dist/     = extracted-app/dist/  (one level up)
   const candidates = [
-    path.join(__dirname, '..', 'dist', 'index.html'),   // extracted-app/dist/index.html  ← CORRECT
+    path.join(__dirname, '..', 'dist', 'index.html'),
     path.join(__dirname, 'index.html'),
     path.join(__dirname, 'dist', 'index.html'),
   ];
@@ -187,6 +186,7 @@ function createWindow() {
     dialog.showErrorBox('Startup Error', 'Could not find dist/index.html. Make sure the app is built.');
     return;
   }
+
   log('Loading:', indexPath);
   mainWindow.loadFile(indexPath).catch(err => log('Failed to load file:', err.message));
 
@@ -207,6 +207,7 @@ ipcMain.handle('start-monitoring', async () => {
 
 ipcMain.handle('stop-monitoring', async () => {
   try {
+    if (!backendReady) return { success: false, error: 'Backend not ready' };
     return await apiPost('/monitoring/stop');
   } catch (error) {
     return { success: false, error: error.message };
@@ -224,42 +225,84 @@ ipcMain.handle('get-network-status', async () => {
 });
 
 ipcMain.handle('get-live-stats', async () => {
-  try { return await apiGet('/stats'); }
-  catch (error) { return { success: false, error: error.message }; }
+  try {
+    if (!backendReady) return { success: false, error: 'Backend not ready' };
+    return await apiGet('/stats');
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('get-alerts', async () => {
-  try { return await apiGet('/alerts'); }
-  catch (error) { return { success: false, error: error.message }; }
+  try {
+    if (!backendReady) return { success: false, alerts: [], error: 'Backend not ready' };
+    return await apiGet('/alerts');
+  } catch (error) {
+    return { success: false, alerts: [], error: error.message };
+  }
 });
 
 ipcMain.handle('get-events', async () => {
-  try { return await apiGet('/events'); }
-  catch (error) { return { success: false, error: error.message }; }
+  try {
+    if (!backendReady) return { success: false, events: [], error: 'Backend not ready' };
+    return await apiGet('/events');
+  } catch (error) {
+    return { success: false, events: [], error: error.message };
+  }
+});
+
+ipcMain.handle('get-connections', async () => {
+  try {
+    if (!backendReady) return { success: false, connections: [], error: 'Backend not ready' };
+    return await apiGet('/connections');
+  } catch (error) {
+    return { success: false, connections: [], error: error.message };
+  }
+});
+
+ipcMain.handle('get-dns-logs', async () => {
+  try {
+    if (!backendReady) return { success: false, dns_logs: [], error: 'Backend not ready' };
+    return await apiGet('/dns');
+  } catch (error) {
+    return { success: false, dns_logs: [], error: error.message };
+  }
+});
+
+ipcMain.handle('get-http-logs', async () => {
+  try {
+    if (!backendReady) return { success: false, http_logs: [], error: 'Backend not ready' };
+    return await apiGet('/http');
+  } catch (error) {
+    return { success: false, http_logs: [], error: error.message };
+  }
+});
+
+ipcMain.handle('get-incidents', async () => {
+  try {
+    if (!backendReady) return { success: false, incidents: [], error: 'Backend not ready' };
+    return await apiGet('/incidents');
+  } catch (error) {
+    return { success: false, incidents: [], error: error.message };
+  }
 });
 
 ipcMain.handle('simulate-attack', async (_, attackType) => {
-  try { return await apiPost('/simulate', { attack_type: attackType }); }
-  catch (error) { return { success: false, error: error.message }; }
+  try {
+    if (!backendReady) return { success: false, error: 'Backend not ready' };
+    return await apiPost('/simulate', { attack_type: attackType });
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('block-ip', async (_, ip) => {
-  try { return await apiPost('/block-ip', { ip }); }
-  catch (error) { return { success: false, error: error.message }; }
-});
-
-ipcMain.handle('export-report', async () => {
   try {
-    const report = await apiGet('/report');
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      title: 'Save IDPS Report',
-      defaultPath: `idps-report-${Date.now()}.json`,
-      filters: [{ name: 'JSON Files', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }],
-    });
-    if (canceled || !filePath) return { success: false, canceled: true };
-    fs.writeFileSync(filePath, JSON.stringify(report, null, 2), 'utf-8');
-    return { success: true, filePath };
-  } catch (error) { return { success: false, error: error.message }; }
+    if (!backendReady) return { success: false, error: 'Backend not ready' };
+    return await apiPost('/block-ip', { ip });
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('scan-hardware', async () => {
@@ -269,51 +312,120 @@ ipcMain.handle('scan-hardware', async () => {
       .filter(line => line.includes('USB\\'))
       .map(line => {
         const [_, id, name, status] = line.split(',');
-        return { id: id?.trim() || '', name: name?.trim() || '', type: 'USB', status: status?.trim().toLowerCase() === 'ok' ? 'connected' : 'disconnected', lastSeen: new Date().toISOString(), details: { vendor: name?.split('\\')[0]?.trim() || '' } };
+        return {
+          id: id?.trim() || '',
+          name: name?.trim() || '',
+          type: 'USB',
+          status: status?.trim().toLowerCase() === 'ok' ? 'connected' : 'disconnected',
+          lastSeen: new Date().toISOString(),
+          details: { vendor: name?.split('\\')[0]?.trim() || '' }
+        };
       });
+
     const { stdout: diskDrives } = await execAsync('wmic diskdrive get DeviceID,Model,Size,Status /format:csv');
     const diskList = diskDrives.split('\n')
       .filter(line => line.includes('\\\\.\\'))
       .map(line => {
         const [_, id, model, size, status] = line.split(',');
-        return { id: id?.trim() || '', name: model?.trim() || '', type: 'Disk', status: status?.trim().toLowerCase() === 'ok' ? 'connected' : 'disconnected', lastSeen: new Date().toISOString(), details: { capacity: size?.trim() || '', vendor: model?.split(' ')[0]?.trim() || '' } };
+        return {
+          id: id?.trim() || '',
+          name: model?.trim() || '',
+          type: 'Disk',
+          status: status?.trim().toLowerCase() === 'ok' ? 'connected' : 'disconnected',
+          lastSeen: new Date().toISOString(),
+          details: { capacity: size?.trim() || '', vendor: model?.split(' ')[0]?.trim() || '' }
+        };
       });
+
     const analyzedDevices = [...usbList, ...diskList].map(device => {
       const nm = device.name.toLowerCase();
-      const isSuspicious = nm.includes('unknown') || (device.type === 'USB' && nm.includes('mass storage')) || (device.type === 'Disk' && !device.details.capacity);
-      return { ...device, status: isSuspicious ? 'suspicious' : device.status };
+      const isSuspicious =
+        nm.includes('unknown') ||
+        (device.type === 'USB' && nm.includes('mass storage')) ||
+        (device.type === 'Disk' && !device.details.capacity);
+
+      return {
+        ...device,
+        status: isSuspicious ? 'suspicious' : device.status
+      };
     });
+
     return { success: true, devices: analyzedDevices };
-  } catch (error) { return { success: false, error: error.message, devices: [] }; }
+  } catch (error) {
+    return { success: false, error: error.message, devices: [] };
+  }
+});
+
+ipcMain.handle('export-report', async () => {
+  try {
+    if (!backendReady) return { success: false, error: 'Backend not ready' };
+    const report = await apiGet('/report');
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save IDPS Report',
+      defaultPath: `idps-report-${Date.now()}.json`,
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+    });
+    if (canceled || !filePath) return { success: false, canceled: true };
+    fs.writeFileSync(filePath, JSON.stringify(report, null, 2), 'utf-8');
+    return { success: true, filePath };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('save-report', async (_, data) => {
   try {
-    const { canceled, filePath } = await dialog.showSaveDialog({ title: 'Save Report', defaultPath: `report-${Date.now()}.json`, filters: [{ name: 'JSON Files', extensions: ['json'] }] });
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save Report',
+      defaultPath: `report-${Date.now()}.json`,
+      filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    });
     if (canceled || !filePath) return { success: false, canceled: true };
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
     return { success: true, filePath };
-  } catch (error) { return { success: false, error: error.message }; }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('load-report', async () => {
   try {
-    const { canceled, filePaths } = await dialog.showOpenDialog({ title: 'Load Report', properties: ['openFile'], filters: [{ name: 'JSON Files', extensions: ['json'] }] });
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Load Report',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    });
     if (canceled || !filePaths?.length) return { success: false, canceled: true };
     const raw = fs.readFileSync(filePaths[0], 'utf-8');
     return { success: true, data: JSON.parse(raw), filePath: filePaths[0] };
-  } catch (error) { return { success: false, error: error.message }; }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
-ipcMain.handle('minimize-window', () => { BrowserWindow.getFocusedWindow()?.minimize(); return { success: true }; });
-ipcMain.handle('maximize-window', () => { const w = BrowserWindow.getFocusedWindow(); w?.isMaximized() ? w.unmaximize() : w?.maximize(); return { success: true }; });
-ipcMain.handle('close-window', () => { BrowserWindow.getFocusedWindow()?.close(); return { success: true }; });
+ipcMain.handle('minimize-window', () => {
+  BrowserWindow.getFocusedWindow()?.minimize();
+  return { success: true };
+});
+
+ipcMain.handle('maximize-window', () => {
+  const w = BrowserWindow.getFocusedWindow();
+  w?.isMaximized() ? w.unmaximize() : w?.maximize();
+  return { success: true };
+});
+
+ipcMain.handle('close-window', () => {
+  BrowserWindow.getFocusedWindow()?.close();
+  return { success: true };
+});
 
 app.whenReady().then(async () => {
   log('App is ready');
   configureSession();
 
-  // Try to start backend automatically (if not already running externally)
   const backendResult = await startPythonBackend();
   log('Backend startup result:', JSON.stringify(backendResult));
 

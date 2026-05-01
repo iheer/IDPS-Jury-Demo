@@ -1,0 +1,26 @@
+{
+  "port_scan": {
+    "signature": "Potential Nmap Port Scan Detected",
+    "category": "Reconnaissance",
+    "severity": "high",
+    "action": "Monitor / Block Source IP"
+  },
+  "brute_force": {
+    "signature": "Multiple Failed Login Attempts",
+    "category": "Credential Access",
+    "severity": "critical",
+    "action": "Block IP / Lock Account"
+  },
+  "ddos": {
+    "signature": "Abnormal Traffic Spike / Possible DDoS",
+    "category": "Impact",
+    "severity": "critical",
+    "action": "Rate Limit / Blackhole Source"
+  },
+  "data_exfiltration": {
+    "signature": "Suspicious Outbound Data Transfer",
+    "category": "Exfiltration",
+    "severity": "high",
+    "action": "Isolate Host / Inspect Transfer"
+  }
+}
